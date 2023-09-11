@@ -70,8 +70,8 @@ async fn main() -> Result<(), ()> {
         .filter_level(cli.verbose.log_level_filter())
         .init();
 
-    let api_token = std::env::var("OPENAI_API_KEY").unwrap_or_else(|_| {
-        error!("Please set the OPENAI_API_KEY environment variable.");
+    let api_token = std::env::var("OPENAI_KEY").unwrap_or_else(|_| {
+        error!("Please set the OPENAI_KEY environment variable.");
         std::process::exit(1);
     });
 
@@ -206,9 +206,9 @@ async fn main() -> Result<(), ()> {
                 .function_call(ChatCompletionFunctionCall::Object(
                     json!({ "name": "commit" }),
                 ))
-                .model("gpt-3.5-turbo-16k")
+                .model("gpt-4")
                 .temperature(0.0)
-                .max_tokens(2000u16)
+                .max_tokens(1000u16)
                 .build()
                 .unwrap(),
         )
