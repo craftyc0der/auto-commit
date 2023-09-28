@@ -104,6 +104,7 @@ async fn main() -> Result<(), ()> {
 
     let output = Command::new("git")
         .arg("diff")
+        .arg("--staged")
         .arg("HEAD")
         .output()
         .expect("Couldn't find diff.")
@@ -188,7 +189,7 @@ async fn main() -> Result<(), ()> {
                     ChatCompletionFunctions {
                         name: "get_diff".to_string(),
                         description: Some(
-                            "Returns the output of `git diff HEAD` as a string.".to_string(),
+                            "Returns the output of `git diff --staged HEAD` as a string.".to_string(),
                         ),
                         parameters: Some(json!({
                             "type": "object",
