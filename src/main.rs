@@ -189,7 +189,8 @@ async fn main() -> Result<(), ()> {
                     ChatCompletionFunctions {
                         name: "get_diff".to_string(),
                         description: Some(
-                            "Returns the output of `git diff --staged HEAD` as a string.".to_string(),
+                            "Returns the output of `git diff --staged HEAD` as a string."
+                                .to_string(),
                         ),
                         parameters: Some(json!({
                             "type": "object",
@@ -207,7 +208,7 @@ async fn main() -> Result<(), ()> {
                 .function_call(ChatCompletionFunctionCall::Object(
                     json!({ "name": "commit" }),
                 ))
-                .model("gpt-4")
+                .model("gpt-4o")
                 .temperature(0.0)
                 .max_tokens(1000u16)
                 .build()
