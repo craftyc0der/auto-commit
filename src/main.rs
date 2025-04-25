@@ -68,6 +68,7 @@ async fn main() -> Result<(), ()> {
     let cli = Cli::parse();
     env_logger::Builder::new()
         .filter_level(cli.verbose.log_level_filter())
+        .format(|buf, record| writeln!(buf, "{}", record.args()))
         .init();
 
     let api_token = std::env::var("OPENAI_KEY").unwrap_or_else(|_| {
@@ -99,6 +100,14 @@ async fn main() -> Result<(), ()> {
         error!("It looks like you are not in a git repository.\nPlease run this command from the root of a git repository, or initialize one using `git init`.");
         std::process::exit(1);
     }
+
+    let branch_output = Command::new("git")
+        .args(&["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .expect("Failed to get branch")
+        .stdout;
+
+    let branch = str::from_utf8(&branch_output).unwrap().trim();
 
     let client = async_openai::Client::with_config(OpenAIConfig::new().with_api_key(api_token));
 
@@ -163,10 +172,11 @@ async fn main() -> Result<(), ()> {
                 .messages(vec![
                     ChatCompletionRequestMessage {
                         role: Role::System,
-                        content: Some(
-                            "You are an experienced programmer who writes great commit messages."
-                                .to_string(),
-                        ),
+                        content: Some(format!(
+                            "You are an experienced programmer who writes great commit messages. \
+                             Prefix the title with the branch followed by a colon. {}: Detailed description of the changes.",
+                            branch
+                        )),
                         ..Default::default()
                     },
                     ChatCompletionRequestMessage {
@@ -208,7 +218,7 @@ async fn main() -> Result<(), ()> {
                 .function_call(ChatCompletionFunctionCall::Object(
                     json!({ "name": "commit" }),
                 ))
-                .model("gpt-4o")
+                .model("gpt-4.1")
                 .temperature(0.0)
                 .max_tokens(1000u16)
                 .build()
