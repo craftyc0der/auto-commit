@@ -1,8 +1,11 @@
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionFunctionCall, ChatCompletionFunctions, ChatCompletionRequestMessage,
-        CreateChatCompletionRequestArgs, FunctionCall, Role,
+        ChatCompletionMessageToolCall, ChatCompletionNamedToolChoice,
+        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestSystemMessageArgs,
+        ChatCompletionRequestToolMessageArgs, ChatCompletionToolArgs,
+        ChatCompletionToolChoiceOption, ChatCompletionToolType, CreateChatCompletionRequestArgs,
+        FunctionCall, FunctionName, FunctionObjectArgs,
     },
 };
 use clap::Parser;
@@ -170,57 +173,80 @@ async fn main() -> Result<(), ()> {
         .create(
             CreateChatCompletionRequestArgs::default()
                 .messages(vec![
-                    ChatCompletionRequestMessage {
-                        role: Role::System,
-                        content: Some(format!(
+                    ChatCompletionRequestSystemMessageArgs::default()
+                        .content(format!(
                             "You are an experienced programmer who writes great commit messages. \
                              Prefix the title with the branch followed by a colon. {}: Detailed description of the changes.",
                             branch
-                        )),
-                        ..Default::default()
-                    },
-                    ChatCompletionRequestMessage {
-                        role: Role::Assistant,
-                        content: Some("".to_string()),
-                        function_call: Some(FunctionCall {
-                            arguments: "{}".to_string(),
-                            name: "get_diff".to_string(),
-                        }),
-                        ..Default::default()
-                    },
-                    ChatCompletionRequestMessage {
-                        role: Role::Function,
-                        content: Some(output.to_string()),
-                        name: Some("get_diff".to_string()),
-                        ..Default::default()
-                    },
+                        ))
+                        .build()
+                        .unwrap()
+                        .into(),
+                    ChatCompletionRequestAssistantMessageArgs::default()
+                        .tool_calls(vec![ChatCompletionMessageToolCall {
+                            id: "get_diff".to_string(),
+                            r#type: ChatCompletionToolType::Function,
+                            function: FunctionCall {
+                                arguments: "{}".to_string(),
+                                name: "get_diff".to_string(),
+                            },
+                        }])
+                        .build()
+                        .unwrap()
+                        .into(),
+                    ChatCompletionRequestToolMessageArgs::default()
+                        .tool_call_id("get_diff".to_string())
+                        .content(output.to_string())
+                        .build()
+                        .unwrap()
+                        .into(),
                 ])
-                .functions(vec![
-                    ChatCompletionFunctions {
-                        name: "get_diff".to_string(),
-                        description: Some(
-                            "Returns the output of `git diff --staged HEAD` as a string."
-                                .to_string(),
-                        ),
-                        parameters: Some(json!({
-                            "type": "object",
-                            "properties": {}
-                        })),
-                    },
-                    ChatCompletionFunctions {
-                        name: "commit".to_string(),
-                        description: Some(
-                            "Creates a commit with the given title and a description.".to_string(),
-                        ),
-                        parameters: Some(serde_json::to_value(commit_schema).unwrap()),
-                    },
+                .tools(vec![
+                    ChatCompletionToolArgs::default()
+                        .r#type(ChatCompletionToolType::Function)
+                        .function(
+                            FunctionObjectArgs::default()
+                                .name("get_diff".to_string())
+                                .description(
+                                    "Returns the output of `git diff --staged HEAD` as a string."
+                                        .to_string(),
+                                )
+                                .parameters(json!({
+                                    "type": "object",
+                                    "properties": {}
+                                }))
+                                .build()
+                                .unwrap(),
+                        )
+                        .build()
+                        .unwrap(),
+                    ChatCompletionToolArgs::default()
+                        .r#type(ChatCompletionToolType::Function)
+                        .function(
+                            FunctionObjectArgs::default()
+                                .name("commit".to_string())
+                                .description(
+                                    "Creates a commit with the given title and a description."
+                                        .to_string(),
+                                )
+                                .parameters(serde_json::to_value(commit_schema).unwrap())
+                                .build()
+                                .unwrap(),
+                        )
+                        .build()
+                        .unwrap(),
                 ])
-                .function_call(ChatCompletionFunctionCall::Object(
-                    json!({ "name": "commit" }),
+                .tool_choice(ChatCompletionToolChoiceOption::Named(
+                    ChatCompletionNamedToolChoice {
+                        r#type: ChatCompletionToolType::Function,
+                        function: FunctionName {
+                            name: "commit".to_string(),
+                        },
+                    },
                 ))
-                .model("gpt-4.1")
+                .model("gpt-5.2")
                 .temperature(0.0)
-                .max_tokens(1000u16)
+                .max_completion_tokens(1000u32)
                 .build()
                 .unwrap(),
         )
@@ -231,10 +257,11 @@ async fn main() -> Result<(), ()> {
         sp.unwrap().stop_with_message("Finished Analyzing!".into());
     }
 
-    let commit_data = &completion.choices[0].message.function_call;
-    let commit_msg = serde_json::from_str::<Commit>(&commit_data.as_ref().unwrap().arguments)
-        .expect("Couldn't parse model response.")
-        .to_string();
+    let commit_data = &completion.choices[0].message.tool_calls;
+    let commit_msg =
+        serde_json::from_str::<Commit>(&commit_data.as_ref().unwrap()[0].function.arguments)
+            .expect("Couldn't parse model response.")
+            .to_string();
 
     if cli.dry_run {
         info!("{}", commit_msg);
